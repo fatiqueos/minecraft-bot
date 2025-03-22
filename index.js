@@ -1,47 +1,40 @@
 const mineflayer = require('mineflayer');
-const cmd = require('mineflayer-cmd').plugin;
 const fs = require('fs');
 let rawdata = fs.readFileSync('config.json');
 let data = JSON.parse(rawdata);
 var connected = 0;
-var reconnectInterval = 15000; // 15 seconds for reconnect attempts
+var reconnecting = false;
+var reconnectInterval = 60000;
 var host = data["ip"];
+var port = data["port"];
 var username = data["name"];
 var bot;
-
-// Mesaj göndermeyi ayarlayan süreler
-var messageIntervalFiveMinutes = 300000; // 5 dakika
-var messageIntervalTenMinutes = 600000; // 10 dakika
-var messageCount = 5;
 
 function createBot() {
     bot = mineflayer.createBot({
         host: host,
+        port: port,
         username: username
     });
 
-    bot.loadPlugin(cmd);
-
     setupBotEvents();
-    startMessageLoop();
+    startAntiAFK();
 }
 
 function setupBotEvents() {
     bot.on('login', function () {
         console.log("Logged In");
-        connected = 1; // Set connected flag
-        // Do nothing while logged in
+        connected = 1;
+    });
+
+    bot.on('spawn', function () {
+        connected = 1;
     });
 
     bot.on('time', function () {
         if (connected < 1) {
             return;
         }
-        // Bot logic for movement and actions can go here if needed in the future
-    });
-
-    bot.on('spawn', function () {
-        connected = 1;
     });
 
     bot.on('death', function () {
@@ -49,32 +42,20 @@ function setupBotEvents() {
     });
 
     bot.on('end', function () {
-        console.log("Disconnected from the server - Attempting to reconnect...");
-        attemptReconnect();
+        console.log("Disconnected from the server");
+        if (!reconnecting) {
+            reconnecting = true;
+            attemptReconnect();
+        }
     });
 
     bot.on('error', function (err) {
         console.log(`Error occurred: ${err.message}`);
-        attemptReconnect();
+        if (!reconnecting) {
+            reconnecting = true;
+            attemptReconnect();
+        }
     });
-}
-
-function startMessageLoop() {
-    // Her 10 dakikada t.me/distornollo mesajını gönder
-    setInterval(function () {
-        if (connected) {
-            bot.chat('t.me/distornollo');
-        }
-    }, messageIntervalTenMinutes);
-
-    // Her 5 dakikada dsc.gg/distornollo mesajını 5 kere gönder
-    setInterval(function () {
-        if (connected) {
-            for (let i = 0; i < messageCount; i++) {
-                bot.chat('dsc.gg/distornollo');
-            }
-        }
-    }, messageIntervalFiveMinutes);
 }
 
 function attemptReconnect() {
@@ -82,6 +63,7 @@ function attemptReconnect() {
         try {
             createBot();
             console.log(`Attempting to reconnect...`);
+            reconnecting = false;
         } catch (error) {
             console.log(`Reconnect attempt failed: ${error.message}`);
             attemptReconnect();
@@ -89,5 +71,22 @@ function attemptReconnect() {
     }, reconnectInterval);
 }
 
-// İlk botu oluştur
+function startAntiAFK() {
+    setInterval(function () {
+        if (bot.entity) {
+            const x = bot.entity.position.x;
+            const y = bot.entity.position.y;
+            const z = bot.entity.position.z;
+            bot.setControlState('jump', true);
+            setTimeout(() => {
+                bot.setControlState('jump', false);
+                bot.setControlState('forward', true);
+                setTimeout(() => {
+                    bot.setControlState('forward', false);
+                }, 1000);
+            }, 1000);
+        }
+    }, 30000);
+}
+
 createBot();
